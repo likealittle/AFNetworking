@@ -91,11 +91,15 @@ static dispatch_group_t http_request_operation_completion_group() {
 }
 
 - (NSError *)error {
+    [self.lock lock];
+    NSError *ret = nil;
     if (_responseSerializationError) {
-        return _responseSerializationError;
+        ret = _responseSerializationError;
     } else {
-        return [super error];
+        ret = [super error];
     }
+    [self.lock unlock];
+    return ret;
 }
 
 #pragma mark - AFHTTPRequestOperation

@@ -349,11 +349,11 @@ static inline BOOL AFStateTransitionIsValid(AFOperationState fromState, AFOperat
 }
 
 - (void)pause {
+    [self.lock lock];
     if ([self isPaused] || [self isFinished] || [self isCancelled]) {
+        [self.lock unlock];
         return;
     }
-    
-    [self.lock lock];
     
     if ([self isExecuting]) {
         [self performSelector:@selector(operationDidPause) onThread:[[self class] networkRequestThread] withObject:nil waitUntilDone:NO modes:[self.runLoopModes allObjects]];
@@ -380,14 +380,11 @@ static inline BOOL AFStateTransitionIsValid(AFOperationState fromState, AFOperat
 }
 
 - (void)resume {
-    if (![self isPaused]) {
-        return;
-    }
-    
     [self.lock lock];
-    self.state = AFOperationReadyState;
-    
-    [self start];
+    if ([self isPaused]) {
+        self.state = AFOperationReadyState;
+        [self start];
+    }
     [self.lock unlock];
 }
 
@@ -468,6 +465,7 @@ static inline BOOL AFStateTransitionIsValid(AFOperationState fromState, AFOperat
     }
     NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCancelled userInfo:userInfo];
 
+    [self.lock lock];
     if (![self isFinished]) {
         if (self.connection) {
             [self.connection cancel];
@@ -478,6 +476,7 @@ static inline BOOL AFStateTransitionIsValid(AFOperationState fromState, AFOperat
             [self finish];
         }
     }
+    [self.lock unlock];
 }
 
 #pragma mark -
@@ -625,8 +624,10 @@ didReceiveResponse:(NSURLResponse *)response
         }
         
         if (self.outputStream.streamError) {
+            [self.lock lock];
             [self.connection cancel];
             [self performSelector:@selector(connection:didFailWithError:) withObject:self.connection withObject:self.outputStream.streamError];
+            [self.lock unlock];
             return;
         }
     }
@@ -641,6 +642,7 @@ didReceiveResponse:(NSURLResponse *)response
 }
 
 - (void)connectionDidFinishLoading:(NSURLConnection __unused *)connection {
+    [self.lock lock];
     self.responseData = [self.outputStream propertyForKey:NSStreamDataWrittenToMemoryStreamKey];
     
     [self.outputStream close];
@@ -648,11 +650,13 @@ didReceiveResponse:(NSURLResponse *)response
     [self finish];
     
     self.connection = nil;
+    [self.lock unlock];
 }
 
 - (void)connection:(NSURLConnection __unused *)connection
   didFailWithError:(NSError *)error
 {
+    [self.lock lock];
     self.error = error;
     
     [self.outputStream close];
@@ -660,6 +664,7 @@ didReceiveResponse:(NSURLResponse *)response
     [self finish];
     
     self.connection = nil;
+    [self.lock unlock];
 }
 
 - (NSCachedURLResponse *)connection:(NSURLConnection *)connection
